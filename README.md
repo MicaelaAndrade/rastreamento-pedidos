@@ -4,7 +4,7 @@ Sistema simplificado para acompanhar pedidos de delivery: cadastro e login de us
 
 - **Back-end:** Java 21, Spring Boot 4.1, Spring Security (JWT), Spring Data JPA, SQLite, Flyway
 - **Front-end:** React 19, TypeScript, Vite, TanStack Query
-- **Testes:** 51 no back-end (JUnit 5, MockMvc) e 30 no front-end (Vitest, Testing Library)
+- **Testes:** 51 no back-end (JUnit 5, MockMvc) e 36 no front-end (Vitest, Testing Library)
 
 ## Como rodar
 
@@ -39,7 +39,7 @@ O repositório tem um `.devcontainer` com Java 21, Maven e Node 22. No GitHub, c
 
 ```bash
 cd backend && ./mvnw test        # 51 testes: regras de status, domínio e API ponta a ponta
-cd frontend && npm test          # 30 testes: rastreio de status, ações do pedido, login, máscaras
+cd frontend && npm test          # 36 testes: rastreio de status, ações do pedido, login, formulário
 ```
 
 ### Configuração (variáveis de ambiente, todas opcionais)
@@ -129,7 +129,9 @@ O schema é versionado com **Flyway** (`db/migration`), com `CHECK` nos status e
 
 **Concorrência.** O pedido tem `@Version` (lock otimista): se duas pessoas mudarem o mesmo pedido ao mesmo tempo, a segunda recebe `409` em vez de sobrescrever a primeira sem perceber.
 
-**Front-end.** TanStack Query cuida de cache, recarga e estados de carregamento. A lista se atualiza a cada 15 segundos para refletir mudanças feitas por outras pessoas. Cada pedido aparece como uma "rota" com o horário em que passou por cada status.
+**Endereço pelo CEP.** No novo pedido, ao digitar o CEP, rua, bairro e cidade são preenchidos pela [ViaCEP](https://viacep.com.br), um serviço público. Para um sistema de delivery, endereço digitado errado é entrega que atrasa, então vale ajudar. Como depende de um serviço de fora, a busca é só uma ajuda: se o CEP não existir ou a ViaCEP estiver fora do ar, aparece um aviso e os campos continuam livres para preencher à mão. A busca nunca apaga o que a pessoa já digitou, e uma resposta atrasada de um CEP antigo é ignorada. A chamada fica no front-end para não acoplar a API a um serviço externo. Num sistema maior, eu passaria a busca pelo back-end, com cache e fornecedor reserva.
+
+**Front-end.** TanStack Query cuida de cache, recarga e estados de carregamento. Telefone, CEP e preço têm máscara (o preço é digitado só com números, e os centavos se ajustam sozinhos). A lista se atualiza a cada 15 segundos para refletir mudanças feitas por outras pessoas. Cada pedido aparece como uma "rota" com o horário em que passou por cada status.
 
 ## Estrutura
 
