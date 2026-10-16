@@ -1,0 +1,4 @@
+spring:
+  datasource:
+    # Banco em memória: some ao fim dos testes e não suja o pedidos.db de desenvolvimento.
+    url: jdbc:sqlite:file:testdb?mode=memory&cache=shared&foreign_keys=true
