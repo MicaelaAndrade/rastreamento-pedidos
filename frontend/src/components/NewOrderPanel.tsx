@@ -3,17 +3,19 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { ordersApi } from '../api/endpoints'
 import type { CreateOrderRequest } from '../api/types'
-import { formatMoney, parsePrice } from '../lib/format'
+import { formatMoney } from '../lib/format'
+import { formatPriceDigits, maskPhone, maskZipCode, priceDigits } from '../lib/masks'
 
 interface ItemDraft {
   key: number
   name: string
   quantity: string
-  unitPrice: string
+  /** Preço em centavos, só dígitos ("1500" = R$ 15,00). */
+  priceCents: string
 }
 
 let nextKey = 1
-const emptyItem = (): ItemDraft => ({ key: nextKey++, name: '', quantity: '1', unitPrice: '' })
+const emptyItem = (): ItemDraft => ({ key: nextKey++, name: '', quantity: '1', priceCents: '' })
 
 export function NewOrderPanel({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
@@ -44,11 +46,8 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
     },
   })
 
-  const total = items.reduce((sum, item) => {
-    const price = parsePrice(item.unitPrice)
-    const quantity = Number(item.quantity)
-    return Number.isFinite(price) && Number.isFinite(quantity) ? sum + price * quantity : sum
-  }, 0)
+  // Soma em centavos (números inteiros) para não acumular erro de ponto flutuante.
+  const totalCents = items.reduce((sum, item) => sum + Number(item.priceCents || 0) * (Number(item.quantity) || 0), 0)
 
   function updateItem(key: number, patch: Partial<ItemDraft>) {
     setItems((current) => current.map((item) => (item.key === key ? { ...item, ...patch } : item)))
@@ -62,7 +61,7 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
       items: items.map((item) => ({
         name: item.name.trim(),
         quantity: Number(item.quantity),
-        unitPrice: parsePrice(item.unitPrice),
+        unitPrice: Number(item.priceCents) / 100,
       })),
     })
   }
@@ -103,8 +102,10 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
                 <input
                   type="tel"
                   value={customer.phone}
-                  onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+                  onChange={(e) => setCustomer({ ...customer, phone: maskPhone(e.target.value) })}
                   placeholder="(16) 99999-0000"
+                  pattern="\(\d{2}\) \d{4,5}-\d{4}"
+                  title="Telefone com DDD, por exemplo (16) 99999-0000"
                   required
                 />
               </label>
@@ -146,9 +147,11 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
                 <span>CEP</span>
                 <input
                   value={address.zipCode}
-                  onChange={(e) => setAddress({ ...address, zipCode: e.target.value })}
+                  onChange={(e) => setAddress({ ...address, zipCode: maskZipCode(e.target.value) })}
                   inputMode="numeric"
                   placeholder="00000-000"
+                  pattern="\d{5}-\d{3}"
+                  title="CEP com 8 dígitos, por exemplo 14400-000"
                   required
                 />
               </label>
@@ -182,9 +185,9 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
                   <label className="field">
                     <span>Preço (R$)</span>
                     <input
-                      inputMode="decimal"
-                      value={item.unitPrice}
-                      onChange={(e) => updateItem(item.key, { unitPrice: e.target.value })}
+                      inputMode="numeric"
+                      value={formatPriceDigits(item.priceCents)}
+                      onChange={(e) => updateItem(item.key, { priceCents: priceDigits(e.target.value) })}
                       placeholder="0,00"
                       required
                     />
@@ -221,7 +224,7 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
 
           <footer className="panel-foot">
             <p>
-              Total <strong>{formatMoney(total)}</strong>
+              Total <strong>{formatMoney(totalCents / 100)}</strong>
             </p>
             <button type="submit" className="btn btn-primary" disabled={create.isPending}>
               {create.isPending ? 'Criando…' : 'Criar pedido'}
