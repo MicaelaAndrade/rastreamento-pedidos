@@ -678,6 +678,24 @@ input {
   grid-column: span 2;
 }
 
+/* Mensagem ao lado do CEP: ocupa o resto da primeira linha do endereço. */
+.cep-status {
+  grid-column: span 3;
+  align-self: end;
+  padding-bottom: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.cep-found {
+  color: var(--route);
+}
+
+.cep-not-found,
+.cep-error {
+  color: var(--cancel);
+}
+
 .span-3 {
   grid-column: span 3;
 }
@@ -765,8 +783,13 @@ input {
   }
 
   .span-2,
-  .span-3 {
+  .span-3,
+  .cep-status {
     grid-column: auto;
+  }
+
+  .cep-status {
+    padding-bottom: 0;
   }
 
   .item-row {

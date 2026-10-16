@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { ordersApi } from '../api/endpoints'
 import type { CreateOrderRequest } from '../api/types'
+import { lookupCep, type CepAddress } from '../lib/cep'
 import { formatMoney } from '../lib/format'
 import { formatPriceDigits, maskPhone, maskZipCode, priceDigits } from '../lib/masks'
 
@@ -13,6 +14,23 @@ interface ItemDraft {
   /** Preço em centavos, só dígitos ("1500" = R$ 15,00). */
   priceCents: string
 }
+
+type CepStatus = 'idle' | 'loading' | 'found' | 'not-found' | 'error'
+
+const CEP_MESSAGE: Record<CepStatus, string> = {
+  idle: '',
+  loading: 'Buscando endereço…',
+  found: 'Endereço preenchido pelo CEP. Confira e informe o número.',
+  'not-found': 'CEP não encontrado. Preencha o endereço manualmente.',
+  error: 'Não foi possível buscar o CEP agora. Preencha o endereço manualmente.',
+}
+
+/**
+ * Usa o valor do CEP só se o campo estiver vazio ou ainda com o valor que o próprio CEP preencheu antes.
+ * Assim, trocar o CEP atualiza o endereço, mas nunca apaga o que a pessoa digitou.
+ */
+const fill = (current: string, fromCep: string, previousFromCep: string | undefined) =>
+  fromCep && (current === '' || current === previousFromCep) ? fromCep : current
 
 let nextKey = 1
 const emptyItem = (): ItemDraft => ({ key: nextKey++, name: '', quantity: '1', priceCents: '' })
@@ -30,9 +48,20 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
     zipCode: '',
   })
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()])
+  const [cepStatus, setCepStatus] = useState<CepStatus>('idle')
+  const zipField = useRef<HTMLInputElement>(null)
+  const numberField = useRef<HTMLInputElement>(null)
+  /** CEP da busca em andamento: se a pessoa mudar o CEP no meio, a resposta antiga é ignorada. */
+  const pendingCep = useRef('')
+  const lastFromCep = useRef<CepAddress | null>(null)
 
+  // Foco no primeiro campo só ao abrir o painel. (Junto com o efeito abaixo, ele rodaria
+  // de novo a cada atualização da lista de pedidos e tiraria a pessoa do campo em que está.)
   useEffect(() => {
     firstField.current?.focus()
+  }, [])
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -48,6 +77,44 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
 
   // Soma em centavos (números inteiros) para não acumular erro de ponto flutuante.
   const totalCents = items.reduce((sum, item) => sum + Number(item.priceCents || 0) * (Number(item.quantity) || 0), 0)
+
+  /** Formata o CEP e, quando ele fica completo, busca o endereço. A busca é só uma ajuda: se falhar, nada trava. */
+  async function handleZipChange(value: string) {
+    const zipCode = maskZipCode(value)
+    setAddress((a) => ({ ...a, zipCode }))
+
+    const digits = zipCode.replace('-', '')
+    if (digits.length !== 8) {
+      pendingCep.current = ''
+      setCepStatus('idle')
+      return
+    }
+    if (digits === pendingCep.current) return
+    pendingCep.current = digits
+    setCepStatus('loading')
+
+    try {
+      const found = await lookupCep(digits)
+      if (pendingCep.current !== digits) return
+      if (!found) {
+        setCepStatus('not-found')
+        return
+      }
+      const previous = lastFromCep.current
+      setAddress((a) => ({
+        ...a,
+        street: fill(a.street, found.street, previous?.street),
+        neighborhood: fill(a.neighborhood, found.neighborhood, previous?.neighborhood),
+        city: fill(a.city, found.city, previous?.city),
+      }))
+      lastFromCep.current = found
+      setCepStatus('found')
+      // Leva a pessoa para o próximo campo que falta, mas só se ela ainda estiver no CEP.
+      if (document.activeElement === zipField.current) numberField.current?.focus()
+    } catch {
+      if (pendingCep.current === digits) setCepStatus('error')
+    }
+  }
 
   function updateItem(key: number, patch: Partial<ItemDraft>) {
     setItems((current) => current.map((item) => (item.key === key ? { ...item, ...patch } : item)))
@@ -115,13 +182,36 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
           <fieldset>
             <legend>Endereço de entrega</legend>
             <div className="grid-address">
+              <div className="field">
+                <label htmlFor="zip-code">CEP</label>
+                <input
+                  id="zip-code"
+                  ref={zipField}
+                  value={address.zipCode}
+                  onChange={(e) => handleZipChange(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="00000-000"
+                  pattern="\d{5}-\d{3}"
+                  title="CEP com 8 dígitos, por exemplo 14400-000"
+                  aria-describedby="zip-code-status"
+                  required
+                />
+              </div>
+              <p id="zip-code-status" className={`cep-status cep-${cepStatus}`} aria-live="polite">
+                {CEP_MESSAGE[cepStatus]}
+              </p>
               <label className="field span-3">
                 <span>Rua</span>
                 <input value={address.street} onChange={(e) => setAddress({ ...address, street: e.target.value })} required />
               </label>
               <label className="field">
                 <span>Número</span>
-                <input value={address.number} onChange={(e) => setAddress({ ...address, number: e.target.value })} required />
+                <input
+                  ref={numberField}
+                  value={address.number}
+                  onChange={(e) => setAddress({ ...address, number: e.target.value })}
+                  required
+                />
               </label>
               <label className="field span-2">
                 <span>Complemento</span>
@@ -139,21 +229,9 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
                   required
                 />
               </label>
-              <label className="field span-3">
+              <label className="field span-2">
                 <span>Cidade</span>
                 <input value={address.city} onChange={(e) => setAddress({ ...address, city: e.target.value })} required />
-              </label>
-              <label className="field">
-                <span>CEP</span>
-                <input
-                  value={address.zipCode}
-                  onChange={(e) => setAddress({ ...address, zipCode: maskZipCode(e.target.value) })}
-                  inputMode="numeric"
-                  placeholder="00000-000"
-                  pattern="\d{5}-\d{3}"
-                  title="CEP com 8 dígitos, por exemplo 14400-000"
-                  required
-                />
               </label>
             </div>
           </fieldset>
