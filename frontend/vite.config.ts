@@ -11,7 +11,16 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: apiTarget, changeOrigin: true },
+      '/api': {
+        target: apiTarget,
+        changeOrigin: true,
+        // Quem chama a API é o próprio proxy, não o navegador. Sem remover o Origin,
+        // a API trataria a chamada como CORS e recusaria (403) quando o front é aberto
+        // por outro endereço, como a URL pública do GitHub Codespaces.
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => proxyReq.removeHeader('origin'))
+        },
+      },
     },
   },
   test: {
