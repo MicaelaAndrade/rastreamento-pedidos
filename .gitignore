@@ -1,0 +1,16 @@
+# Back-end
+backend/target/
+*.db
+*.db-shm
+*.db-wal
+
+# Front-end
+node_modules/
+frontend/dist/
+
+# IDEs e sistema
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.iml
+.DS_Store

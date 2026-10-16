@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: rastreamento-pedidos
+
+  datasource:
+    # O arquivo do banco é criado na primeira execução. Para mudar o local: DB_PATH=/caminho/pedidos.db
+    url: jdbc:sqlite:${DB_PATH:pedidos.db}?foreign_keys=true&busy_timeout=5000
+    hikari:
+      # O SQLite aceita um escritor por vez; uma conexão só evita erros de "database is locked".
+      maximum-pool-size: 1
+
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: none # quem cria e evolui as tabelas é o Flyway (src/main/resources/db/migration)
+    open-in-view: false
+    properties:
+      hibernate:
+        # Carrega itens e histórico de vários pedidos de uma vez, em vez de uma consulta por pedido (N+1).
+        default_batch_fetch_size: 50
+
+  flyway:
+    locations: classpath:db/migration
+
+app:
+  jwt:
+    # Em produção, defina JWT_SECRET com um valor longo e aleatório. O valor padrão é só para rodar localmente.
+    secret: ${JWT_SECRET:chave-de-desenvolvimento-troque-em-producao-0123456789}
+    expiration: ${JWT_EXPIRATION:8h}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
