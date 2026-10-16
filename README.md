@@ -49,7 +49,7 @@ cd frontend && npm test          # 36 testes: rastreio de status, ações do ped
 | `JWT_SECRET` | chave de desenvolvimento | Chave de assinatura do token (mín. 32 caracteres). **Troque em produção.** |
 | `JWT_EXPIRATION` | `8h` | Validade do token |
 | `DB_PATH` | `pedidos.db` | Arquivo do banco SQLite |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | Origens liberadas, se o front for servido em outro endereço |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,https://*.app.github.dev` | Origens liberadas (aceita `*`). O padrão cobre o front local e o GitHub Codespaces |
 
 ## API
 

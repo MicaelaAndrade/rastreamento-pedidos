@@ -81,7 +81,8 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource(@Value("${app.cors.allowed-origins}") List<String> origins) {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(origins);
+        // Padrões (ex.: https://*.app.github.dev) em vez de endereços exatos.
+        config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         config.setExposedHeaders(List.of("Location"));
