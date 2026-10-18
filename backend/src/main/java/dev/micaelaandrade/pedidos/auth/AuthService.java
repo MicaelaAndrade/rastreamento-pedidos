@@ -83,7 +83,9 @@ public class AuthService {
         // O BCrypt só compara os primeiros 72 bytes: sem esta regra, "senha + qualquer coisa" entraria.
         // A comparação roda mesmo assim, para a resposta levar o mesmo tempo nos dois casos.
         boolean tooLong = request.password().getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES;
-        boolean passwordMatches = passwordEncoder.matches(tooLong ? "" : request.password(), hash) && !tooLong;
+        // (Uma senha vazia não serviria: o encoder responde "não confere" na hora, sem calcular o hash.)
+        String candidate = tooLong ? "senha-longa-demais-nunca-confere" : request.password();
+        boolean passwordMatches = passwordEncoder.matches(candidate, hash) && !tooLong;
         if (user.isEmpty() || !passwordMatches) {
             throw new BadCredentialsException(INVALID_CREDENTIALS);
         }

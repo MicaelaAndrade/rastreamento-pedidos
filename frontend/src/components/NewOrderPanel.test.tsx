@@ -285,4 +285,54 @@ describe('NewOrderPanel', () => {
     expect(field('Preço (R$)')).toHaveValue('12,50')
     expect(field('Preço (R$)').validationMessage).toBe('O preço máximo de um item é R$ 9.999.999,99.')
   })
+
+  it('enviar com a confirmação de descarte aberta fecha a confirmação, e "Descartar" some', async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockServices(async () => json(200, VIACEP_FRANCA), 300)
+    const onClose = vi.fn()
+    renderWithProviders(<NewOrderPanel onClose={onClose} />)
+
+    await user.type(field('Nome'), 'Fernanda')
+    await user.type(field('Telefone'), '16999990000')
+    await user.type(field('CEP'), '14400120')
+    await waitFor(() => expect(field('Número')).toHaveFocus())
+    await user.type(field('Número'), '1')
+    await user.type(field('Item 1'), 'Pastel')
+    await user.type(field('Preço (R$)'), '1000')
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Criar pedido' }))
+
+    expect(screen.queryByRole('button', { name: 'Descartar' })).not.toBeInTheDocument()
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1)) // fechou porque o pedido foi criado
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/orders')).toHaveLength(1)
+  })
+
+  it('depois de um clique no fundo, "Continuar editando" devolve o foco ao último campo usado', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<NewOrderPanel onClose={() => {}} />)
+
+    await user.type(field('Cidade'), 'Franca')
+    await user.click(document.querySelector('.panel-backdrop')!) // o clique no fundo tira o foco do campo
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Continuar editando' }))
+
+    await waitFor(() => expect(field('Cidade')).toHaveFocus())
+  })
+
+  it('o aviso de preço máximo some na próxima tecla, e o campo volta a valer pelo que mostra', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<NewOrderPanel onClose={() => {}} />)
+
+    await user.type(field('Preço (R$)'), '1250')
+    await user.paste('10.000.000,00')
+    expect(field('Preço (R$)').validationMessage).not.toBe('')
+
+    await user.keyboard('{Shift}')
+
+    expect(field('Preço (R$)').validationMessage).toBe('')
+    expect(field('Preço (R$)')).toHaveValue('12,50')
+  })
 })

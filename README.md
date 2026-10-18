@@ -4,7 +4,7 @@ Sistema simplificado para acompanhar pedidos de delivery: cadastro e login de us
 
 - **Back-end:** Java 21, Spring Boot 4.1, Spring Security (JWT), Spring Data JPA, SQLite, Flyway
 - **Front-end:** React 19, TypeScript, Vite, TanStack Query
-- **Testes:** 95 no back-end (JUnit 5, MockMvc) e 65 no front-end (Vitest, Testing Library)
+- **Testes:** 95 no back-end (JUnit 5, MockMvc) e 68 no front-end (Vitest, Testing Library)
 
 ## Como rodar
 
@@ -39,7 +39,7 @@ O repositório tem um `.devcontainer` com Java 21, Maven e Node 22. No GitHub, c
 
 ```bash
 cd backend && ./mvnw test        # 95 testes: regras de status, domínio, API ponta a ponta e casos de borda
-cd frontend && npm test          # 65 testes: rastreio de status, ações do pedido, sessão, formulário
+cd frontend && npm test          # 68 testes: rastreio de status, ações do pedido, sessão, formulário
 ```
 
 ### Configuração (variáveis de ambiente, todas opcionais)

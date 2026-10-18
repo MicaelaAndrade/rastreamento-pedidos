@@ -59,7 +59,8 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
   const numberField = useRef<HTMLInputElement>(null)
   const keepEditingButton = useRef<HTMLButtonElement>(null)
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
-  const focusBeforeDiscard = useRef<HTMLElement | null>(null)
+  /** Último campo do formulário que teve foco: é para lá que o foco volta ao fechar a confirmação. */
+  const lastFormField = useRef<HTMLElement | null>(null)
   const submit = useSingleSubmit()
   /** CEP da busca em andamento: se a pessoa mudar o CEP no meio, a resposta antiga é ignorada. */
   const pendingCep = useRef('')
@@ -86,10 +87,13 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
     items.length > 1 ||
     items.some((item) => item.name !== '' || item.priceCents !== '' || item.quantity !== '1')
 
-  /** Fecha a confirmação e devolve o foco ao campo em que a pessoa estava. */
+  /**
+   * Fecha a confirmação e devolve o foco ao campo em que a pessoa estava. Usa o último campo focado,
+   * e não o elemento ativo no momento do clique: um clique no fundo já tirou o foco do campo.
+   */
   const keepEditing = useCallback(() => {
     setConfirmingDiscard(false)
-    const target = focusBeforeDiscard.current
+    const target = lastFormField.current?.isConnected ? lastFormField.current : firstField.current
     requestAnimationFrame(() => target?.focus())
   }, [])
 
@@ -98,10 +102,8 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
     // Com o pedido sendo enviado, "descartar" não faria sentido: ele já está a caminho da API.
     if (create.isPending) return
     if (confirmingDiscard) keepEditing()
-    else if (isDirty) {
-      focusBeforeDiscard.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-      setConfirmingDiscard(true)
-    } else onClose()
+    else if (isDirty) setConfirmingDiscard(true)
+    else onClose()
   }, [create.isPending, confirmingDiscard, isDirty, keepEditing, onClose])
 
   useEffect(() => {
@@ -166,6 +168,8 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!submit.start()) return
+    // Enviar responde à pergunta "descartar?": a pessoa decidiu criar o pedido.
+    setConfirmingDiscard(false)
     create.mutate({
       customer: { name: customer.name.trim(), phone: customer.phone.trim() },
       deliveryAddress: { ...address, complement: address.complement.trim() || null },
@@ -187,6 +191,9 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-labelledby="new-order-title"
         onClick={(e) => e.stopPropagation()}
+        onFocusCapture={(e) => {
+          if (e.target instanceof HTMLElement && e.target.closest('.panel-form')) lastFormField.current = e.target
+        }}
       >
         <header className="panel-head">
           <h2 id="new-order-title">Novo pedido</h2>
@@ -202,7 +209,7 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
               <button ref={keepEditingButton} className="btn btn-quiet" onClick={keepEditing}>
                 Continuar editando
               </button>
-              <button className="btn btn-danger" onClick={onClose}>
+              <button className="btn btn-danger" onClick={onClose} disabled={create.isPending}>
                 Descartar
               </button>
             </div>
@@ -334,6 +341,9 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
                         updateItem(item.key, { priceCents: priceDigits(e.target.value) })
                       }}
                       onBlur={(e) => e.currentTarget.setCustomValidity('')}
+                      // O aviso de "preço máximo" vale só para a colagem recusada: na próxima tecla
+                      // (inclusive Enter para enviar) o campo volta a valer pelo valor que mostra.
+                      onKeyDown={(e) => e.currentTarget.setCustomValidity('')}
                       onPaste={(e) => {
                         // Colar "25,90" ou "25.9" deve dar R$ 25,90, e não ler os dígitos como centavos.
                         const pasted = parsePastedPrice(e.clipboardData.getData('text'))
