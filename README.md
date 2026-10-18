@@ -148,12 +148,21 @@ frontend/src/
 └── lib/         rótulos de status, formatação, máscaras e busca de CEP
 ```
 
-## O que eu faria em seguida
+## Melhorias além do escopo do desafio
 
-- Paginação na listagem.
+Tudo o que o desafio pede está implementado. Abaixo estão as evoluções que eu faria num produto real de logística de delivery.
+
+**Para a operação**
+- **Atribuir entregador ao pedido** ao sair para entrega, para saber quem está levando cada pedido.
+- **Tempo de cada etapa e alerta de atraso**: o histórico de status já guarda os horários, então dá para medir quanto o pedido ficou em preparo ou em rota e destacar os que passaram do tempo esperado.
+- **Receber pedidos de outros canais** (marketplaces, site próprio) por integração, sem duplicar pedido quando a mesma notificação chegar duas vezes.
+- **Endereço em coordenadas** a partir do CEP, para estimar distância e tempo de entrega e agrupar entregas próximas.
+
+**Técnicas**
 - Atualização em tempo real (Server-Sent Events) no lugar da consulta a cada 15 s.
-- Token em cookie `httpOnly` com refresh token, em vez de `localStorage`.
+- Paginação e filtro por data na listagem.
 - Perfis de acesso (atendente, cozinha, entregador), cada um com as ações que lhe cabem.
+- Token em cookie `httpOnly` com refresh token, em vez de `localStorage`.
 - PostgreSQL com Testcontainers nos testes e Docker Compose para subir tudo com um comando.
 
 ## Uso de IA
