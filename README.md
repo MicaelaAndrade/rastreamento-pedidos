@@ -4,7 +4,7 @@ Sistema simplificado para acompanhar pedidos de delivery: cadastro e login de us
 
 - **Back-end:** Java 21, Spring Boot 4.1, Spring Security (JWT), Spring Data JPA, SQLite, Flyway
 - **Front-end:** React 19, TypeScript, Vite, TanStack Query
-- **Testes:** 59 no back-end (JUnit 5, MockMvc) e 36 no front-end (Vitest, Testing Library)
+- **Testes:** 89 no back-end (JUnit 5, MockMvc) e 57 no front-end (Vitest, Testing Library)
 
 ## Como rodar
 
@@ -38,18 +38,18 @@ O repositório tem um `.devcontainer` com Java 21, Maven e Node 22. No GitHub, c
 ### Testes
 
 ```bash
-cd backend && ./mvnw test        # 59 testes: regras de status, domínio e API ponta a ponta
-cd frontend && npm test          # 36 testes: rastreio de status, ações do pedido, login, formulário
+cd backend && ./mvnw test        # 89 testes: regras de status, domínio, API ponta a ponta e casos de borda
+cd frontend && npm test          # 57 testes: rastreio de status, ações do pedido, sessão, formulário
 ```
 
 ### Configuração (variáveis de ambiente, todas opcionais)
 
 | Variável | Padrão | Para quê |
 |---|---|---|
-| `JWT_SECRET` | chave de desenvolvimento | Chave de assinatura do token (mín. 32 caracteres). **Troque em produção.** |
+| `JWT_SECRET` | chave de desenvolvimento | Chave de assinatura do token (mín. 32 caracteres). A padrão é pública: a API avisa no log ao usá-la. **Defina em produção.** |
 | `JWT_EXPIRATION` | `8h` | Validade do token |
 | `DB_PATH` | `pedidos.db` | Arquivo do banco SQLite |
-| `CORS_ALLOWED_ORIGINS` | `localhost` em qualquer porta e `*.app.github.dev` | Origens liberadas (aceita `*` e `[*]` para porta). O padrão serve para desenvolvimento local e GitHub Codespaces; **em produção, informe o endereço real do front** |
+| `CORS_ALLOWED_ORIGINS` | `localhost` em qualquer porta | Origens liberadas (aceita `*` e `[*]` para porta). Cobre o desenvolvimento local e o GitHub Codespaces, que entrega as requisições com Origin `localhost`. **Em produção, informe o endereço real do front** |
 
 ## API
 
@@ -63,7 +63,7 @@ Todas as rotas, exceto cadastro e login, exigem o header `Authorization: Bearer 
 | `POST` | `/api/orders` | Cria um pedido (cliente, endereço, itens). Começa como `RECEBIDO` |
 | `GET` | `/api/orders` | Lista os pedidos, mais recentes primeiro. Filtro opcional: `?status=EM_PREPARO` |
 | `GET` | `/api/orders/{id}` | Busca um pedido pelo ID |
-| `PATCH` | `/api/orders/{id}/status` | Muda o status: `{"status": "EM_PREPARO"}` |
+| `PATCH` | `/api/orders/{id}/status` | Muda o status: `{"status": "EM_PREPARO", "expectedVersion": 0}` (`expectedVersion` é opcional, veja *Concorrência*) |
 
 <details>
 <summary>Exemplo: criar um pedido</summary>
@@ -83,7 +83,9 @@ POST /api/orders
 }
 ```
 
-A resposta (`201 Created`, com header `Location`) traz o pedido completo, incluindo `total`, o histórico de status e `allowedNextStatuses`, a lista de status para os quais o pedido pode ir agora.
+A resposta (`201 Created`, com header `Location`) traz o pedido completo, incluindo `total`, o histórico de status, `allowedNextStatuses` (para quais status o pedido pode ir agora) e `version`.
+
+Os tipos são conferidos à risca: quantidade `1.5` ou `"2"`, preço em texto e status numérico (`{"status": 4}`) respondem `400` dizendo o campo, em vez de serem convertidos em silêncio. O preço precisa ser maior que zero, com até 2 casas decimais.
 
 </details>
 
@@ -92,9 +94,10 @@ A resposta (`201 Created`, com header `Location`) traz o pedido completo, inclui
 | Situação | Status |
 |---|---|
 | Campos inválidos (com a lista `errors` dizendo quais) | `400` |
-| Sem token, token inválido ou expirado, senha errada | `401` |
+| Sem token, token inválido ou expirado, usuário do token não existe mais, senha errada | `401` |
 | Pedido não encontrado | `404` |
-| Transição de status não permitida, e-mail já cadastrado | `409` |
+| Transição de status não permitida, pedido alterado por outra pessoa, e-mail já cadastrado | `409` |
+| Erro inesperado (sem detalhes internos; a causa vai para o log) | `500` |
 
 ## Regras de status
 
@@ -116,22 +119,22 @@ CANCELADO     CANCELADO
 
 **Uma única fonte da regra.** A API devolve `allowedNextStatuses` em cada pedido, e o front mostra só os botões dessas ações. Assim a regra de transição não é duplicada no React.
 
-**Autenticação stateless com JWT.** O login emite um token HS256. A validação (assinatura, emissor, validade) é feita pelo Spring Security como *resource server*, sem filtro escrito à mão. Senhas com BCrypt. O e-mail é normalizado (minúsculas), e o login responde a mesma mensagem para e-mail inexistente e senha errada, para não revelar quais e-mails têm conta.
+**Autenticação stateless com JWT.** O login emite um token HS256. A validação (assinatura, emissor, validade) é feita pelo Spring Security como *resource server*, sem filtro escrito à mão. A API também confere se o usuário do token ainda existe (um token antigo de um banco recriado responde 401, e não erro ao gravar). Senhas com BCrypt, limitadas a 72 **bytes**, o limite real do algoritmo (letras com acento e emojis ocupam mais de um byte). O e-mail é normalizado (minúsculas), e o login responde a mesma mensagem para e-mail inexistente e senha errada, para não revelar quais e-mails têm conta.
 
 **Todos os usuários veem todos os pedidos.** O sistema foi pensado como um painel de operação (cozinha, expedição), em que qualquer pessoa da equipe acompanha e atualiza os pedidos. Quem criou o pedido e quem fez cada mudança fica registrado.
 
 **SQLite com cuidado nos tipos.** O SQLite não tem tipo decimal exato nem tipo de data:
 - valores em dinheiro são guardados em **centavos inteiros** (`MoneyConverter`), para `25.90` nunca virar `25.8999...`;
 - datas são guardadas como texto ISO-8601 em UTC (`InstantConverter`);
-- o pool tem **uma conexão**, porque o SQLite aceita um escritor por vez.
+- o pool tem **uma conexão**, porque o SQLite aceita um escritor por vez. Por isso o hash da senha (BCrypt, ~80 ms) roda fora de transação: cadastro e login não seguram a conexão enquanto calculam.
 
 O schema é versionado com **Flyway** (`db/migration`), com `CHECK` nos status e quantidades, em vez de deixar o Hibernate gerar as tabelas.
 
-**Concorrência.** O pedido tem `@Version` (lock otimista): se duas pessoas mudarem o mesmo pedido ao mesmo tempo, a segunda recebe `409` em vez de sobrescrever a primeira sem perceber.
+**Concorrência.** Cada pedido tem uma `version`, que muda a cada alteração. Ao mudar o status, o front envia a versão que a tela está mostrando (`expectedVersion`). Se outra pessoa alterou o pedido nesse meio-tempo, por exemplo iniciou o preparo enquanto alguém clicava em cancelar, a API responde `409` em vez de aplicar a mudança sobre um estado que a pessoa não viu, e a tela se atualiza. Mudanças ao mesmo tempo no banco também são protegidas pelo `@Version` do JPA. O campo é opcional para quem usa a API direto (Swagger, curl).
 
 **Endereço pelo CEP.** No novo pedido, ao digitar o CEP, rua, bairro e cidade são preenchidos pela [ViaCEP](https://viacep.com.br), um serviço público. Para um sistema de delivery, endereço digitado errado é entrega que atrasa, então vale ajudar. Como depende de um serviço de fora, a busca é só uma ajuda: se o CEP não existir ou a ViaCEP estiver fora do ar, aparece um aviso e os campos continuam livres para preencher à mão. A busca nunca apaga o que a pessoa já digitou, e uma resposta atrasada de um CEP antigo é ignorada. A chamada fica no front-end para não acoplar a API a um serviço externo. Num sistema maior, eu passaria a busca pelo back-end, com cache e fornecedor reserva.
 
-**Front-end.** TanStack Query cuida de cache, recarga e estados de carregamento. Telefone, CEP e preço têm máscara (o preço é digitado só com números, e os centavos se ajustam sozinhos). A lista se atualiza a cada 15 segundos para refletir mudanças feitas por outras pessoas. Cada pedido aparece como uma "rota" com o horário em que passou por cada status.
+**Front-end.** TanStack Query cuida de cache, recarga e estados de carregamento. A lista se atualiza a cada 15 segundos para refletir mudanças feitas por outras pessoas, e os detalhes abertos usam os mesmos dados, então nunca ficam desatualizados em relação à lista. Cada pedido aparece como uma "rota" com o horário em que passou por cada status. Telefone, CEP e preço têm máscara (o preço é digitado só com números e os centavos se ajustam sozinhos; colar "25,90" também funciona). Fechar o novo pedido com dados preenchidos pede confirmação, cliques duplos não geram envios duplicados, e uma queda momentânea da API não desloga ninguém.
 
 ## Estrutura
 
