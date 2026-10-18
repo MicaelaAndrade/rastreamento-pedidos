@@ -4,7 +4,7 @@ Sistema simplificado para acompanhar pedidos de delivery: cadastro e login de us
 
 - **Back-end:** Java 21, Spring Boot 4.1, Spring Security (JWT), Spring Data JPA, SQLite, Flyway
 - **Front-end:** React 19, TypeScript, Vite, TanStack Query
-- **Testes:** 51 no back-end (JUnit 5, MockMvc) e 36 no front-end (Vitest, Testing Library)
+- **Testes:** 59 no back-end (JUnit 5, MockMvc) e 36 no front-end (Vitest, Testing Library)
 
 ## Como rodar
 
@@ -38,7 +38,7 @@ O repositório tem um `.devcontainer` com Java 21, Maven e Node 22. No GitHub, c
 ### Testes
 
 ```bash
-cd backend && ./mvnw test        # 51 testes: regras de status, domínio e API ponta a ponta
+cd backend && ./mvnw test        # 59 testes: regras de status, domínio e API ponta a ponta
 cd frontend && npm test          # 36 testes: rastreio de status, ações do pedido, login, formulário
 ```
 
@@ -49,7 +49,7 @@ cd frontend && npm test          # 36 testes: rastreio de status, ações do ped
 | `JWT_SECRET` | chave de desenvolvimento | Chave de assinatura do token (mín. 32 caracteres). **Troque em produção.** |
 | `JWT_EXPIRATION` | `8h` | Validade do token |
 | `DB_PATH` | `pedidos.db` | Arquivo do banco SQLite |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,https://*.app.github.dev` | Origens liberadas (aceita `*`). O padrão cobre o front local e o GitHub Codespaces |
+| `CORS_ALLOWED_ORIGINS` | `localhost` em qualquer porta e `*.app.github.dev` | Origens liberadas (aceita `*` e `[*]` para porta). O padrão serve para desenvolvimento local e GitHub Codespaces; **em produção, informe o endereço real do front** |
 
 ## API
 
