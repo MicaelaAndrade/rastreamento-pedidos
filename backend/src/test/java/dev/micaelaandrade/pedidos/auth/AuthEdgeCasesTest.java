@@ -1,5 +1,6 @@
 package dev.micaelaandrade.pedidos.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
@@ -8,10 +9,18 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import dev.micaelaandrade.pedidos.ApiTest;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -119,13 +128,16 @@ class AuthEdgeCasesTest extends ApiTest {
 
     // ---------- Tokens autênticos, mas com dados que não batem com o banco ----------
 
-    private String token(String subject, boolean withName) {
-        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+    /** Gera um token assinado com a chave da API, com os dados que o teste quiser. */
+    private String token(String subject, String email, Instant issuedAt, boolean withName) {
         JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
                 .issuer(TokenService.ISSUER)
                 .subject(subject)
-                .issuedAt(now)
-                .expiresAt(now.plusSeconds(600));
+                .issuedAt(issuedAt)
+                .expiresAt(now().plusSeconds(3600)); // sempre dentro da validade: o teste é sobre outra regra
+        if (email != null) {
+            claims.claim("email", email);
+        }
         if (withName) {
             claims.claim("name", "Alguém");
         }
@@ -133,40 +145,113 @@ class AuthEdgeCasesTest extends ApiTest {
                 .getTokenValue();
     }
 
-    @Test
-    void token_de_usuario_que_nao_existe_responde_401_ao_criar_pedido_e_no_me() throws Exception {
-        String token = token("999999", true);
+    private static Instant now() {
+        return Instant.now().truncatedTo(ChronoUnit.SECONDS);
+    }
 
+    private record Registered(String id, String email) {
+    }
+
+    private Registered registerUser() throws Exception {
+        String email = uniqueEmail();
+        String body = register(email, "senha-segura");
+        return new Registered(String.valueOf((Integer) JsonPath.read(body, "$.user.id")), email);
+    }
+
+    private void expectUnauthorizedEverywhere(String token) throws Exception {
+        mvc.perform(get("/api/orders").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/auth/me").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/orders")
                         .header(HttpHeaders.AUTHORIZATION, bearer(token))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_ORDER))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.detail", containsString("Faça login novamente")));
-
-        mvc.perform(get("/api/auth/me").header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    void token_com_subject_que_nao_e_numero_responde_401() throws Exception {
-        mvc.perform(post("/api/orders")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(token("abc", true)))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(VALID_ORDER))
-                .andExpect(status().isUnauthorized());
+    void token_de_usuario_que_nao_existe_e_recusado_em_todas_as_rotas_inclusive_consultas() throws Exception {
+        expectUnauthorizedEverywhere(token("999999", "ninguem@exemplo.com", now(), true));
+    }
+
+    @Test
+    void token_com_subject_que_nao_e_numero_e_recusado() throws Exception {
+        expectUnauthorizedEverywhere(token("abc", "ninguem@exemplo.com", now(), true));
+    }
+
+    @Test
+    void token_com_id_reaproveitado_por_outra_pessoa_e_recusado() throws Exception {
+        // Banco recriado: o ID existe, mas pertence a outra pessoa (e-mail diferente).
+        Registered user = registerUser();
+        expectUnauthorizedEverywhere(token(user.id(), "pessoa-antiga@exemplo.com", now(), true));
+    }
+
+    @Test
+    void token_emitido_antes_de_a_conta_existir_e_recusado() throws Exception {
+        // Mesmo e-mail cadastrado de novo num banco recriado: o token antigo é anterior à conta.
+        Registered user = registerUser();
+        expectUnauthorizedEverywhere(token(user.id(), user.email(), now().minus(1, ChronoUnit.DAYS), true));
     }
 
     @Test
     void token_sem_o_nome_usa_o_nome_do_banco_no_historico() throws Exception {
-        String body = register(uniqueEmail(), "senha-segura");
-        String userId = String.valueOf((Integer) com.jayway.jsonpath.JsonPath.read(body, "$.user.id"));
+        Registered user = registerUser();
 
         mvc.perform(post("/api/orders")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(token(userId, false)))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token(user.id(), user.email(), now(), false)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_ORDER))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.statusHistory[0].changedBy").value("Mica"));
+    }
+
+    // ---------- Senha no login e cadastro simultâneo ----------
+
+    @Test
+    void login_recusa_senha_com_bytes_a_mais_depois_do_limite_do_bcrypt() throws Exception {
+        String email = uniqueEmail();
+        String password = "a".repeat(72);
+        register(email, password);
+
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\": \"%s\", \"password\": \"%s\"}".formatted(email, password + "b")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.detail").value("E-mail ou senha inválidos."));
+
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\": \"%s\", \"password\": \"%s\"}".formatted(email, password)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void cadastros_simultaneos_com_o_mesmo_email_criam_uma_conta_e_os_outros_recebem_409() throws Exception {
+        String email = uniqueEmail();
+        int attempts = 10;
+        ExecutorService pool = Executors.newFixedThreadPool(attempts);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<Integer>> results = new ArrayList<>();
+            for (int i = 0; i < attempts; i++) {
+                results.add(pool.submit(() -> {
+                    start.await(); // todos disparam juntos
+                    return mvc.perform(post("/api/auth/register")
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("{\"name\": \"Mica\", \"email\": \"%s\", \"password\": \"senha-segura\"}"
+                                            .formatted(email)))
+                            .andReturn().getResponse().getStatus();
+                }));
+            }
+            start.countDown();
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> result : results) {
+                statuses.add(result.get(30, TimeUnit.SECONDS));
+            }
+
+            assertThat(statuses).containsOnly(201, 409);
+            assertThat(statuses).filteredOn(s -> s == 201).hasSize(1);
+        } finally {
+            pool.shutdownNow();
+        }
     }
 }

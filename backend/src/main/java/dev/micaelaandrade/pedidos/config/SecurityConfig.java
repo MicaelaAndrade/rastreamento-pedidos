@@ -1,7 +1,9 @@
 package dev.micaelaandrade.pedidos.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import dev.micaelaandrade.pedidos.auth.ActiveUserTokenValidator;
 import dev.micaelaandrade.pedidos.auth.TokenService;
+import dev.micaelaandrade.pedidos.auth.UserRepository;
 import jakarta.servlet.DispatcherType;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -15,6 +17,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -72,12 +75,15 @@ public class SecurityConfig {
     }
 
     @Bean
-    JwtDecoder jwtDecoder(JwtProperties properties) {
+    JwtDecoder jwtDecoder(JwtProperties properties, UserRepository users) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(secretKey(properties))
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
-        // Além de assinatura e expiração (padrão), exige que o token tenha sido emitido por esta API.
-        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(TokenService.ISSUER));
+        // Além de assinatura e expiração (padrão), exige que o token tenha sido emitido por esta API
+        // e que pertença a um usuário que ainda existe (e seja a mesma pessoa), em todas as rotas.
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(TokenService.ISSUER),
+                new ActiveUserTokenValidator(users)));
         return decoder;
     }
 

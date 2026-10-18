@@ -5,6 +5,8 @@ import dev.micaelaandrade.pedidos.order.OrderDtos.CreateOrderRequest;
 import dev.micaelaandrade.pedidos.order.OrderDtos.OrderResponse;
 import dev.micaelaandrade.pedidos.order.OrderDtos.UpdateStatusRequest;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -60,6 +62,12 @@ public class OrderController {
                     + "CANCELADO é permitido a partir de RECEBIDO ou EM_PREPARO. Transição inválida retorna 409. "
                     + "Envie expectedVersion (o campo version do pedido) para receber 409 se o pedido "
                     + "tiver mudado desde que você o consultou.")
+    // Exemplo explícito no Swagger: sem ele, o exemplo gerado vinha com "expectedVersion": 0,
+    // e quem o usasse como está receberia 409 em qualquer pedido já alterado.
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(content = @Content(examples = {
+            @ExampleObject(name = "Só o novo status", value = "{\"status\": \"EM_PREPARO\"}"),
+            @ExampleObject(name = "Com a versão vista na tela",
+                    value = "{\"status\": \"EM_PREPARO\", \"expectedVersion\": 0}")}))
     public OrderResponse updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request,
                                       @AuthenticationPrincipal Jwt jwt) {
         return service.changeStatus(id, request.status(), request.expectedVersion(), currentUser.actor(jwt));

@@ -58,4 +58,8 @@ public class User {
     public String getPasswordHash() {
         return passwordHash;
     }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
 }

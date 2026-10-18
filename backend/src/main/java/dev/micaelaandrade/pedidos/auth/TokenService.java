@@ -17,6 +17,7 @@ public class TokenService {
 
     public static final String ISSUER = "rastreamento-pedidos";
     static final String NAME_CLAIM = "name";
+    static final String EMAIL_CLAIM = "email";
 
     private final JwtEncoder encoder;
     private final JwtProperties properties;
@@ -37,7 +38,7 @@ public class TokenService {
                 .issuedAt(now)
                 .expiresAt(expiresAt)
                 .claim(NAME_CLAIM, user.getName())
-                .claim("email", user.getEmail())
+                .claim(EMAIL_CLAIM, user.getEmail())
                 .build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         String token = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();

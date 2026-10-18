@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
+import tools.jackson.core.exc.InputCoercionException;
 import tools.jackson.databind.exc.MismatchedInputException;
 import dev.micaelaandrade.pedidos.auth.EmailAlreadyRegisteredException;
 import dev.micaelaandrade.pedidos.order.InvalidStatusTransitionException;
@@ -102,12 +103,20 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     /** Diz qual campo veio com o tipo errado, quando dá para saber. */
     private static String unreadableMessage(HttpMessageNotReadableException e) {
-        if (e.getMostSpecificCause() instanceof MismatchedInputException mismatch) {
+        Throwable cause = e.getMostSpecificCause();
+        if (cause instanceof MismatchedInputException mismatch) {
             String field = fieldPath(mismatch);
             Class<?> type = mismatch.getTargetType();
             if (!field.isEmpty() && type != null) {
                 return "Valor inválido em \"%s\": %s.".formatted(field, expected(type));
             }
+        }
+        // Número bem escrito, mas grande demais para o campo (ex.: quantidade 2147483648).
+        if (cause instanceof InputCoercionException coercion) {
+            String field = fieldPath(coercion);
+            return field.isEmpty()
+                    ? "Número fora do limite permitido."
+                    : "Valor inválido em \"%s\": número fora do limite permitido.".formatted(field);
         }
         return "Corpo da requisição inválido. Verifique se o JSON está bem formado.";
     }

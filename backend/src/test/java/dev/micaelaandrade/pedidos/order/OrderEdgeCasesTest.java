@@ -73,6 +73,15 @@ class OrderEdgeCasesTest extends ApiTest {
                 .andExpect(jsonPath("$.detail", containsString("número inteiro")));
     }
 
+    @ParameterizedTest(name = "quantity = {0}")
+    @ValueSource(strings = {"2147483648", "99999999999999999999"})
+    void quantidade_gigante_diz_que_o_numero_esta_fora_do_limite(String quantity) throws Exception {
+        createItem("{\"name\": \"X\", \"quantity\": %s, \"unitPrice\": 10}".formatted(quantity))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail", containsString("items[0].quantity")))
+                .andExpect(jsonPath("$.detail", containsString("fora do limite")));
+    }
+
     @Test
     void preco_enviado_como_texto_e_recusado() throws Exception {
         createItem("{\"name\": \"X\", \"quantity\": 1, \"unitPrice\": \"10\"}")
@@ -167,7 +176,7 @@ class OrderEdgeCasesTest extends ApiTest {
         // mas ela decidiu olhando um pedido que já mudou.
         patchStatus(id, "{\"status\": \"CANCELADO\", \"expectedVersion\": 0}")
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.detail", containsString("foi alterado por outra pessoa")))
+                .andExpect(jsonPath("$.detail", containsString("mudou desde que esta tela foi carregada")))
                 .andExpect(jsonPath("$.detail", containsString("Em preparo")));
     }
 

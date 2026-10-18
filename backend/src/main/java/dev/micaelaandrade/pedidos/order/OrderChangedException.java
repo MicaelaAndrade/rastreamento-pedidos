@@ -4,7 +4,7 @@ package dev.micaelaandrade.pedidos.order;
 public class OrderChangedException extends RuntimeException {
 
     public OrderChangedException(Long id, OrderStatus currentStatus) {
-        super("O pedido #%d foi alterado por outra pessoa e agora está \"%s\". Confira e tente de novo."
+        super("O pedido #%d mudou desde que esta tela foi carregada: agora está \"%s\". Confira e tente de novo."
                 .formatted(id, currentStatus.label()));
     }
 }
