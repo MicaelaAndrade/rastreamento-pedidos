@@ -33,7 +33,7 @@ Abra http://localhost:5173, clique em **Criar conta** e comece a cadastrar pedid
 
 ### Sem instalar nada: GitHub Codespaces
 
-O repositório tem um `.devcontainer` com Java 21, Maven e Node 22. No GitHub, clique em **Code → Codespaces → Create codespace on main** e, quando abrir, rode os dois comandos acima em dois terminais. A porta 5173 abre no navegador.
+O repositório tem um `.devcontainer` com Java 21, Maven e Node 22. No GitHub, clique em **Code → Codespaces → Create codespace on main** e, quando abrir, rode os dois comandos acima em dois terminais. A porta 5173 abre no navegador. O Swagger fica no endereço da porta 8080, com `/swagger-ui.html` no final.
 
 ### Testes
 
@@ -145,7 +145,7 @@ frontend/src/
 ├── api/         chamadas HTTP e tipos
 ├── auth/        sessão do usuário (token)
 ├── components/  telas e componentes
-└── lib/         rótulos de status e formatação
+└── lib/         rótulos de status, formatação, máscaras e busca de CEP
 ```
 
 ## O que eu faria em seguida
