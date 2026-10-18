@@ -156,6 +156,7 @@ frontend/src/
 Tudo o que o desafio pede está implementado. Abaixo estão as evoluções que eu faria num produto real de logística de delivery.
 
 **Para a operação**
+- **Vários restaurantes na mesma plataforma**: hoje toda a equipe vê todos os pedidos, como num painel de uma única operação. Com vários restaurantes, cada usuário passaria a pertencer a um restaurante, e a API filtraria os pedidos por ele, para que um restaurante nunca veja os pedidos de outro.
 - **Atribuir entregador ao pedido** ao sair para entrega, para saber quem está levando cada pedido.
 - **Tempo de cada etapa e alerta de atraso**: o histórico de status já guarda os horários, então dá para medir quanto o pedido ficou em preparo ou em rota e destacar os que passaram do tempo esperado.
 - **Receber pedidos de outros canais** (marketplaces, site próprio) por integração, sem duplicar pedido quando a mesma notificação chegar duas vezes.
