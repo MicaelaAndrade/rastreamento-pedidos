@@ -14,7 +14,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
@@ -37,14 +36,18 @@ public class AuthService {
         this.dummyHash = passwordEncoder.encode("senha-que-nunca-sera-usada");
     }
 
-    @Transactional
+    /*
+     * Sem @Transactional de propósito, em register e login: o BCrypt leva ~80 ms de CPU, e o pool tem
+     * uma única conexão (SQLite). Dentro de uma transação, cada cadastro ou login seguraria essa conexão
+     * durante o hash e travaria as outras rotas. Assim, cada consulta abre e fecha a própria transação.
+     */
     public AuthResponse register(RegisterRequest request) {
         String email = normalize(request.email());
         if (users.existsByEmail(email)) {
             throw new EmailAlreadyRegisteredException();
         }
-        User user = new User(request.name().trim(), email, passwordEncoder.encode(request.password()),
-                Instant.now(clock).truncatedTo(ChronoUnit.MILLIS));
+        String hash = passwordEncoder.encode(request.password());
+        User user = new User(request.name(), email, hash, Instant.now(clock).truncatedTo(ChronoUnit.MILLIS));
         try {
             users.saveAndFlush(user);
         } catch (DataIntegrityViolationException e) {
@@ -54,7 +57,6 @@ public class AuthService {
         return authenticated(user);
     }
 
-    @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
         Optional<User> user = users.findByEmail(normalize(request.email()));
         String hash = user.map(User::getPasswordHash).orElse(dummyHash);
@@ -65,20 +67,12 @@ public class AuthService {
         return authenticated(user.get());
     }
 
-    @Transactional(readOnly = true)
-    public UserResponse me(Long userId) {
-        return users.findById(userId)
-                .map(UserResponse::from)
-                // Token válido de um usuário que não existe mais: trata como não autenticado.
-                .orElseThrow(() -> new BadCredentialsException("Usuário não encontrado. Faça login novamente."));
-    }
-
     private AuthResponse authenticated(User user) {
         IssuedToken token = tokens.issue(user);
         return new AuthResponse(token.value(), token.expiresAt(), UserResponse.from(user));
     }
 
     private static String normalize(String email) {
-        return email.trim().toLowerCase(Locale.ROOT);
+        return email.toLowerCase(Locale.ROOT);
     }
 }

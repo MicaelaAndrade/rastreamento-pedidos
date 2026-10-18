@@ -30,11 +30,11 @@ public class OrderService {
     public OrderResponse create(CreateOrderRequest request, Actor actor) {
         AddressRequest a = request.deliveryAddress();
         Order order = Order.place(
-                new Customer(request.customer().name().trim(), request.customer().phone().trim()),
-                new DeliveryAddress(a.street().trim(), a.number().trim(), blankToNull(a.complement()),
-                        a.neighborhood().trim(), a.city().trim(), a.zipCode().trim()),
+                new Customer(request.customer().name(), request.customer().phone()),
+                new DeliveryAddress(a.street(), a.number(), blankToNull(a.complement()),
+                        a.neighborhood(), a.city(), a.zipCode()),
                 request.items().stream()
-                        .map(i -> new OrderItem(i.name().trim(), i.quantity(), i.unitPrice()))
+                        .map(i -> new OrderItem(i.name(), i.quantity(), i.unitPrice()))
                         .toList(),
                 actor,
                 now());
@@ -54,8 +54,15 @@ public class OrderService {
         return OrderResponse.from(find(id));
     }
 
-    public OrderResponse changeStatus(Long id, OrderStatus next, Actor actor) {
+    /**
+     * @param expectedVersion versão que a tela mostrava (opcional). Se o pedido mudou desde então,
+     *                        a mudança é recusada com 409, para ninguém agir sobre um estado que não viu.
+     */
+    public OrderResponse changeStatus(Long id, OrderStatus next, Long expectedVersion, Actor actor) {
         Order order = find(id);
+        if (expectedVersion != null && !expectedVersion.equals(order.getVersion())) {
+            throw new OrderChangedException(id, order.getStatus());
+        }
         order.changeStatus(next, actor, now());
         // saveAndFlush força o UPDATE aqui dentro, para um conflito de versão
         // virar erro 409 nesta requisição em vez de estourar depois do retorno.
@@ -72,6 +79,6 @@ public class OrderService {
     }
 
     private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+        return value == null || value.isBlank() ? null : value;
     }
 }

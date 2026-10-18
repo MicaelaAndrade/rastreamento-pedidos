@@ -24,9 +24,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService service;
+    private final CurrentUser currentUser;
 
-    public AuthController(AuthService service) {
+    public AuthController(AuthService service, CurrentUser currentUser) {
         this.service = service;
+        this.currentUser = currentUser;
     }
 
     @PostMapping("/register")
@@ -47,6 +49,6 @@ public class AuthController {
     @GetMapping("/me")
     @Operation(summary = "Dados do usuário logado")
     public UserResponse me(@AuthenticationPrincipal Jwt jwt) {
-        return service.me(Long.valueOf(jwt.getSubject()));
+        return UserResponse.from(currentUser.user(jwt));
     }
 }

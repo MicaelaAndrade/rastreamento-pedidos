@@ -38,12 +38,15 @@ public class OrderItem {
         if (quantity <= 0) {
             throw new IllegalArgumentException("A quantidade precisa ser maior que zero.");
         }
-        if (unitPrice == null || unitPrice.signum() < 0) {
-            throw new IllegalArgumentException("O preço não pode ser negativo.");
+        if (unitPrice == null || unitPrice.signum() <= 0) {
+            throw new IllegalArgumentException("O preço precisa ser maior que zero.");
+        }
+        if (unitPrice.stripTrailingZeros().scale() > 2) {
+            throw new IllegalArgumentException("O preço deve ter no máximo 2 casas decimais.");
         }
         this.name = name;
         this.quantity = quantity;
-        // Sempre 2 casas (7.5 vira 7.50). A validação da API já recusa mais de 2 casas decimais.
+        // Sempre 2 casas (7.5 vira 7.50). Não perde nada: mais de 2 casas foi recusado acima.
         this.unitPrice = unitPrice.setScale(2, RoundingMode.UNNECESSARY);
     }
 

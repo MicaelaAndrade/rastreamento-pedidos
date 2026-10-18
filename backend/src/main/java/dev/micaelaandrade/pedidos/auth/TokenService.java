@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 public class TokenService {
 
     public static final String ISSUER = "rastreamento-pedidos";
+    static final String NAME_CLAIM = "name";
 
     private final JwtEncoder encoder;
     private final JwtProperties properties;
@@ -35,7 +36,7 @@ public class TokenService {
                 .subject(user.getId().toString())
                 .issuedAt(now)
                 .expiresAt(expiresAt)
-                .claim(CurrentUser.NAME_CLAIM, user.getName())
+                .claim(NAME_CLAIM, user.getName())
                 .claim("email", user.getEmail())
                 .build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();

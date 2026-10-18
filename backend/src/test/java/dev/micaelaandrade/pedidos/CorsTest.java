@@ -21,7 +21,6 @@ class CorsTest extends ApiTest {
             "http://localhost:8080",     // Swagger local
             "https://localhost:8080",    // Swagger no GitHub Codespaces (o proxy troca o Origin por este)
             "https://localhost:5173",    // front no GitHub Codespaces
-            "https://special-space-x-8080.app.github.dev",
     })
     void aceita_origens_de_desenvolvimento(String origin) throws Exception {
         mvc.perform(post("/api/auth/login")
@@ -37,6 +36,9 @@ class CorsTest extends ApiTest {
             "https://site-malicioso.com",
             "https://app.github.dev.site-malicioso.com",
             "https://localhost.site-malicioso.com",
+            // O Codespaces reescreve o Origin para localhost; o endereço público não precisa ser liberado,
+            // e liberar *.app.github.dev abriria a API para o Codespace de qualquer pessoa.
+            "https://special-space-x-8080.app.github.dev",
     })
     void recusa_outras_origens(String origin) throws Exception {
         mvc.perform(post("/api/auth/login")

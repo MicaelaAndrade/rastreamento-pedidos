@@ -2,6 +2,7 @@ package dev.micaelaandrade.pedidos.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import dev.micaelaandrade.pedidos.auth.TokenService;
+import jakarta.servlet.DispatcherType;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import javax.crypto.SecretKey;
@@ -9,7 +10,6 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -47,9 +47,12 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
+                        // Qualquer método: assim um GET em /login responde 405 (método errado), e não 401.
+                        .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                         .requestMatchers(PUBLIC_DOCS).permitAll()
-                        .requestMatchers("/error").permitAll()
+                        // Libera a página de erro só quando o próprio servidor encaminha um erro para ela,
+                        // não para quem acessa /error direto.
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(Customizer.withDefaults())
@@ -81,7 +84,7 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource(@Value("${app.cors.allowed-origins}") List<String> origins) {
         CorsConfiguration config = new CorsConfiguration();
-        // Padrões (ex.: https://*.app.github.dev) em vez de endereços exatos.
+        // Padrões (ex.: http://localhost:[*]) em vez de endereços exatos.
         config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));

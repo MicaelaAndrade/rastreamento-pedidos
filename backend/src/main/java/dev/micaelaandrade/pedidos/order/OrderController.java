@@ -27,16 +27,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController {
 
     private final OrderService service;
+    private final CurrentUser currentUser;
 
-    public OrderController(OrderService service) {
+    public OrderController(OrderService service, CurrentUser currentUser) {
         this.service = service;
+        this.currentUser = currentUser;
     }
 
     @PostMapping
     @Operation(summary = "Cria um pedido", description = "O pedido sempre começa com o status RECEBIDO.")
     public ResponseEntity<OrderResponse> create(@Valid @RequestBody CreateOrderRequest request,
                                                 @AuthenticationPrincipal Jwt jwt) {
-        OrderResponse created = service.create(request, CurrentUser.from(jwt));
+        OrderResponse created = service.create(request, currentUser.actor(jwt));
         return ResponseEntity.created(URI.create("/api/orders/" + created.id())).body(created);
     }
 
@@ -55,9 +57,11 @@ public class OrderController {
     @PatchMapping("/{id}/status")
     @Operation(summary = "Atualiza o status do pedido",
             description = "Transições permitidas: RECEBIDO → EM_PREPARO → SAIU_PARA_ENTREGA → ENTREGUE. "
-                    + "CANCELADO é permitido a partir de RECEBIDO ou EM_PREPARO. Transição inválida retorna 409.")
+                    + "CANCELADO é permitido a partir de RECEBIDO ou EM_PREPARO. Transição inválida retorna 409. "
+                    + "Envie expectedVersion (o campo version do pedido) para receber 409 se o pedido "
+                    + "tiver mudado desde que você o consultou.")
     public OrderResponse updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request,
                                       @AuthenticationPrincipal Jwt jwt) {
-        return service.changeStatus(id, request.status(), CurrentUser.from(jwt));
+        return service.changeStatus(id, request.status(), request.expectedVersion(), currentUser.actor(jwt));
     }
 }

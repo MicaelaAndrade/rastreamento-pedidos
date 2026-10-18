@@ -33,10 +33,11 @@ app:
     secret: ${JWT_SECRET:chave-de-desenvolvimento-troque-em-producao-0123456789}
     expiration: ${JWT_EXPIRATION:8h}
   cors:
-    # Aceita padrões (* e [*] para qualquer porta). O padrão libera desenvolvimento local e o GitHub
-    # Codespaces, que troca o Origin do navegador por https://localhost:<porta> antes de entregar à API.
+    # Aceita padrões (* e [*] para qualquer porta). O padrão libera só localhost, o que cobre o
+    # desenvolvimento local e o GitHub Codespaces: o encaminhamento de portas do Codespaces troca o
+    # Origin do navegador por https://localhost:<porta> antes de entregar a requisição.
     # Em produção, defina CORS_ALLOWED_ORIGINS com o endereço real do front.
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:[*],https://localhost:[*],https://*.app.github.dev}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:[*],https://localhost:[*]}
 
 springdoc:
   swagger-ui:

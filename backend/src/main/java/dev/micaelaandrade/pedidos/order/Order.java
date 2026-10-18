@@ -148,6 +148,10 @@ public class Order {
         return updatedAt;
     }
 
+    public Long getVersion() {
+        return version;
+    }
+
     /** Quem está agindo sobre o pedido (o usuário logado). */
     public record Actor(Long id, String name) {
     }
