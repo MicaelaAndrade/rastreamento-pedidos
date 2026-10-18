@@ -4,7 +4,7 @@ Sistema simplificado para acompanhar pedidos de delivery: cadastro e login de us
 
 - **Back-end:** Java 21, Spring Boot 4.1, Spring Security (JWT), Spring Data JPA, SQLite, Flyway
 - **Front-end:** React 19, TypeScript, Vite, TanStack Query
-- **Testes:** 89 no back-end (JUnit 5, MockMvc) e 57 no front-end (Vitest, Testing Library)
+- **Testes:** 95 no back-end (JUnit 5, MockMvc) e 65 no front-end (Vitest, Testing Library)
 
 ## Como rodar
 
@@ -38,8 +38,8 @@ O repositório tem um `.devcontainer` com Java 21, Maven e Node 22. No GitHub, c
 ### Testes
 
 ```bash
-cd backend && ./mvnw test        # 89 testes: regras de status, domínio, API ponta a ponta e casos de borda
-cd frontend && npm test          # 57 testes: rastreio de status, ações do pedido, sessão, formulário
+cd backend && ./mvnw test        # 95 testes: regras de status, domínio, API ponta a ponta e casos de borda
+cd frontend && npm test          # 65 testes: rastreio de status, ações do pedido, sessão, formulário
 ```
 
 ### Configuração (variáveis de ambiente, todas opcionais)
@@ -119,7 +119,7 @@ CANCELADO     CANCELADO
 
 **Uma única fonte da regra.** A API devolve `allowedNextStatuses` em cada pedido, e o front mostra só os botões dessas ações. Assim a regra de transição não é duplicada no React.
 
-**Autenticação stateless com JWT.** O login emite um token HS256. A validação (assinatura, emissor, validade) é feita pelo Spring Security como *resource server*, sem filtro escrito à mão. A API também confere se o usuário do token ainda existe (um token antigo de um banco recriado responde 401, e não erro ao gravar). Senhas com BCrypt, limitadas a 72 **bytes**, o limite real do algoritmo (letras com acento e emojis ocupam mais de um byte). O e-mail é normalizado (minúsculas), e o login responde a mesma mensagem para e-mail inexistente e senha errada, para não revelar quais e-mails têm conta.
+**Autenticação stateless com JWT.** O login emite um token HS256. A validação (assinatura, emissor, validade) é feita pelo Spring Security como *resource server*, sem filtro escrito à mão. Em toda requisição, a API também confere se o token pertence a um usuário que existe, com o mesmo e-mail, e se a conta é anterior ao token: num banco recriado, os IDs recomeçam em 1, e um token antigo não pode valer como a pessoa que ganhou o mesmo ID. Senhas com BCrypt, limitadas a 72 **bytes** no cadastro e no login, o limite real do algoritmo (letras com acento e emojis ocupam mais de um byte; sem o limite no login, o BCrypt ignoraria o que vem depois). Dois cadastros simultâneos com o mesmo e-mail criam uma conta só; o outro recebe 409. O e-mail é normalizado (minúsculas), e o login responde a mesma mensagem para e-mail inexistente e senha errada, para não revelar quais e-mails têm conta.
 
 **Todos os usuários veem todos os pedidos.** O sistema foi pensado como um painel de operação (cozinha, expedição), em que qualquer pessoa da equipe acompanha e atualiza os pedidos. Quem criou o pedido e quem fez cada mudança fica registrado.
 
@@ -130,7 +130,7 @@ CANCELADO     CANCELADO
 
 O schema é versionado com **Flyway** (`db/migration`), com `CHECK` nos status e quantidades, em vez de deixar o Hibernate gerar as tabelas.
 
-**Concorrência.** Cada pedido tem uma `version`, que muda a cada alteração. Ao mudar o status, o front envia a versão que a tela está mostrando (`expectedVersion`). Se outra pessoa alterou o pedido nesse meio-tempo, por exemplo iniciou o preparo enquanto alguém clicava em cancelar, a API responde `409` em vez de aplicar a mudança sobre um estado que a pessoa não viu, e a tela se atualiza. Mudanças ao mesmo tempo no banco também são protegidas pelo `@Version` do JPA. O campo é opcional para quem usa a API direto (Swagger, curl).
+**Concorrência.** Cada pedido tem uma `version`, que muda a cada alteração. Ao mudar o status, o front envia a versão que a tela está mostrando (`expectedVersion`). Se outra pessoa alterou o pedido nesse meio-tempo, por exemplo iniciou o preparo enquanto alguém clicava em cancelar, a API responde `409` em vez de aplicar a mudança sobre um estado que a pessoa não viu, e a tela se atualiza. O campo é opcional para quem usa a API direto (Swagger, curl). O `@Version` do JPA fica como segunda proteção caso o banco passe a aceitar escritas em paralelo; com o SQLite e uma conexão só, elas já acontecem uma de cada vez.
 
 **Endereço pelo CEP.** No novo pedido, ao digitar o CEP, rua, bairro e cidade são preenchidos pela [ViaCEP](https://viacep.com.br), um serviço público. Para um sistema de delivery, endereço digitado errado é entrega que atrasa, então vale ajudar. Como depende de um serviço de fora, a busca é só uma ajuda: se o CEP não existir ou a ViaCEP estiver fora do ar, aparece um aviso e os campos continuam livres para preencher à mão. A busca nunca apaga o que a pessoa já digitou, e uma resposta atrasada de um CEP antigo é ignorada. A chamada fica no front-end para não acoplar a API a um serviço externo. Num sistema maior, eu passaria a busca pelo back-end, com cache e fornecedor reserva.
 
