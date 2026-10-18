@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatPriceDigits, maskPhone, maskZipCode, pastedPriceToDigits, priceDigits } from './masks'
+import { formatPriceDigits, maskPhone, maskZipCode, parsePastedPrice, priceDigits } from './masks'
 
 describe('maskPhone', () => {
   it.each([
@@ -69,12 +69,20 @@ describe('correções da revisão', () => {
     ['25.90', '2590'],
     ['7', '700'],
   ])('colar "%s" no preço vira %s centavos', (pasted, digits) => {
-    expect(pastedPriceToDigits(pasted)).toBe(digits)
+    expect(parsePastedPrice(pasted)).toEqual({ digits })
   })
 
   it('colar um texto que não é preço é ignorado', () => {
-    expect(pastedPriceToDigits('abc')).toBeNull()
-    expect(pastedPriceToDigits('12,345')).toBeNull()
+    expect(parsePastedPrice('abc')).toBeNull()
+    expect(parsePastedPrice('12,345')).toBeNull()
+  })
+
+  it.each(['10.000.000,00', '10000000', '99999999,99'])('colar "%s", acima do limite, é recusado e não cortado', (pasted) => {
+    expect(parsePastedPrice(pasted)).toEqual({ tooLarge: true })
+  })
+
+  it('o preço máximo pode ser colado', () => {
+    expect(parsePastedPrice('9.999.999,99')).toEqual({ digits: '999999999' })
   })
 
   it('telefone colado com +55 descarta o código do país', () => {

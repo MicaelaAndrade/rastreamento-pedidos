@@ -18,7 +18,9 @@ export function OrdersPage({ user }: { user: User }) {
   const opener = useRef<HTMLElement | null>(null)
 
   function openPanel() {
-    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    // Só um botão vale como destino. No Safari, o clique do mouse não dá foco ao botão, e o
+    // elemento ativo seria o <body>; nesse caso o foco volta para o "Novo pedido" do topo.
+    opener.current = document.activeElement instanceof HTMLButtonElement ? document.activeElement : null
     setCreating(true)
   }
 

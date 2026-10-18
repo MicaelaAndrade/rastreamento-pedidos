@@ -5,7 +5,7 @@ import { ordersApi } from '../api/endpoints'
 import type { CreateOrderRequest } from '../api/types'
 import { lookupCep, type CepAddress } from '../lib/cep'
 import { formatMoney } from '../lib/format'
-import { formatPriceDigits, maskPhone, maskZipCode, pastedPriceToDigits, priceDigits } from '../lib/masks'
+import { formatPriceDigits, maskPhone, maskZipCode, parsePastedPrice, priceDigits } from '../lib/masks'
 import { useSingleSubmit } from '../lib/useSingleSubmit'
 
 interface ItemDraft {
@@ -59,6 +59,7 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
   const numberField = useRef<HTMLInputElement>(null)
   const keepEditingButton = useRef<HTMLButtonElement>(null)
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
+  const focusBeforeDiscard = useRef<HTMLElement | null>(null)
   const submit = useSingleSubmit()
   /** CEP da busca em andamento: se a pessoa mudar o CEP no meio, a resposta antiga é ignorada. */
   const pendingCep = useRef('')
@@ -70,6 +71,14 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
     firstField.current?.focus()
   }, [])
 
+  const create = useMutation({
+    mutationFn: (body: CreateOrderRequest) => ordersApi.create(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] })
+      onClose()
+    },
+  })
+
   const isDirty =
     customer.name !== '' ||
     customer.phone !== '' ||
@@ -77,12 +86,23 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
     items.length > 1 ||
     items.some((item) => item.name !== '' || item.priceCents !== '' || item.quantity !== '1')
 
+  /** Fecha a confirmação e devolve o foco ao campo em que a pessoa estava. */
+  const keepEditing = useCallback(() => {
+    setConfirmingDiscard(false)
+    const target = focusBeforeDiscard.current
+    requestAnimationFrame(() => target?.focus())
+  }, [])
+
   /** Fechar sem querer (Esc, clique fora) não pode apagar um pedido meio preenchido. */
   const requestClose = useCallback(() => {
-    if (confirmingDiscard) setConfirmingDiscard(false)
-    else if (isDirty) setConfirmingDiscard(true)
-    else onClose()
-  }, [confirmingDiscard, isDirty, onClose])
+    // Com o pedido sendo enviado, "descartar" não faria sentido: ele já está a caminho da API.
+    if (create.isPending) return
+    if (confirmingDiscard) keepEditing()
+    else if (isDirty) {
+      focusBeforeDiscard.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      setConfirmingDiscard(true)
+    } else onClose()
+  }, [create.isPending, confirmingDiscard, isDirty, keepEditing, onClose])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && requestClose()
@@ -94,13 +114,6 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
     if (confirmingDiscard) keepEditingButton.current?.focus()
   }, [confirmingDiscard])
 
-  const create = useMutation({
-    mutationFn: (body: CreateOrderRequest) => ordersApi.create(body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] })
-      onClose()
-    },
-  })
 
   // Soma em centavos (números inteiros) para não acumular erro de ponto flutuante.
   const totalCents = items.reduce((sum, item) => sum + Number(item.priceCents || 0) * (Number(item.quantity) || 0), 0)
@@ -177,7 +190,7 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
       >
         <header className="panel-head">
           <h2 id="new-order-title">Novo pedido</h2>
-          <button className="link-button" onClick={requestClose}>
+          <button className="link-button" onClick={requestClose} disabled={create.isPending}>
             Fechar
           </button>
         </header>
@@ -186,7 +199,7 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
           <div className="discard" role="alertdialog" aria-labelledby="discard-title">
             <p id="discard-title">Descartar este pedido? O que você preencheu será perdido.</p>
             <div className="order-buttons">
-              <button ref={keepEditingButton} className="btn btn-quiet" onClick={() => setConfirmingDiscard(false)}>
+              <button ref={keepEditingButton} className="btn btn-quiet" onClick={keepEditing}>
                 Continuar editando
               </button>
               <button className="btn btn-danger" onClick={onClose}>
@@ -305,6 +318,7 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
                     <input
                       type="number"
                       min={1}
+                      max={999}
                       value={item.quantity}
                       onChange={(e) => updateItem(item.key, { quantity: e.target.value })}
                       required
@@ -315,14 +329,25 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
                     <input
                       inputMode="numeric"
                       value={formatPriceDigits(item.priceCents)}
-                      onChange={(e) => updateItem(item.key, { priceCents: priceDigits(e.target.value) })}
+                      onChange={(e) => {
+                        e.currentTarget.setCustomValidity('')
+                        updateItem(item.key, { priceCents: priceDigits(e.target.value) })
+                      }}
+                      onBlur={(e) => e.currentTarget.setCustomValidity('')}
                       onPaste={(e) => {
                         // Colar "25,90" ou "25.9" deve dar R$ 25,90, e não ler os dígitos como centavos.
-                        const pasted = pastedPriceToDigits(e.clipboardData.getData('text'))
-                        if (pasted !== null) {
-                          e.preventDefault()
-                          updateItem(item.key, { priceCents: pasted })
+                        const pasted = parsePastedPrice(e.clipboardData.getData('text'))
+                        if (pasted === null) return
+                        e.preventDefault()
+                        const input = e.currentTarget
+                        if ('tooLarge' in pasted) {
+                          // Não corta o número em silêncio: mantém o valor anterior e explica.
+                          input.setCustomValidity('O preço máximo de um item é R$ 9.999.999,99.')
+                          input.reportValidity()
+                          return
                         }
+                        input.setCustomValidity('')
+                        updateItem(item.key, { priceCents: pasted.digits })
                       }}
                       placeholder="0,00"
                       required

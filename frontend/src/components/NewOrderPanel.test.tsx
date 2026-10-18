@@ -238,4 +238,51 @@ describe('NewOrderPanel', () => {
 
     expect(field('Preço (R$)')).toHaveValue('25,90')
   })
+
+  it('enquanto o pedido está sendo enviado, Esc e "Fechar" não oferecem descartar', async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockServices(async () => json(200, VIACEP_FRANCA), 300)
+    const onClose = vi.fn()
+    renderWithProviders(<NewOrderPanel onClose={onClose} />)
+
+    await user.type(field('Nome'), 'Fernanda')
+    await user.type(field('Telefone'), '16999990000')
+    await user.type(field('CEP'), '14400120')
+    await waitFor(() => expect(field('Número')).toHaveFocus())
+    await user.type(field('Número'), '1')
+    await user.type(field('Item 1'), 'Pastel')
+    await user.type(field('Preço (R$)'), '1000')
+    await user.click(screen.getByRole('button', { name: 'Criar pedido' }))
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fechar' })).toBeDisabled()
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1)) // fechou porque o pedido foi criado
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/orders')).toHaveLength(1)
+  })
+
+  it('"Continuar editando" devolve o foco ao campo em que a pessoa estava', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<NewOrderPanel onClose={() => {}} />)
+
+    await user.type(field('Rua'), 'Rua A')
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('button', { name: 'Continuar editando' })).toHaveFocus()
+
+    await user.click(screen.getByRole('button', { name: 'Continuar editando' }))
+
+    await waitFor(() => expect(field('Rua')).toHaveFocus())
+  })
+
+  it('colar um preço acima do limite mantém o valor e explica, em vez de cortar o número', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<NewOrderPanel onClose={() => {}} />)
+
+    await user.type(field('Preço (R$)'), '1250')
+    await user.paste('10.000.000,00')
+
+    expect(field('Preço (R$)')).toHaveValue('12,50')
+    expect(field('Preço (R$)').validationMessage).toBe('O preço máximo de um item é R$ 9.999.999,99.')
+  })
 })

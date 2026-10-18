@@ -36,12 +36,16 @@ export function priceDigits(value: string): string {
   return onlyDigits(value).replace(/^0+/, '').slice(0, 9)
 }
 
+/** Maior preço aceito, em centavos: R$ 9.999.999,99 (o limite da API). */
+export const MAX_PRICE_CENTS = 999_999_999
+
 /**
  * Valor colado no campo de preço: lido como número decimal, e não dígito a dígito.
- * "25,9" → "2590" (R$ 25,90); "R$ 1.250,00" → "125000"; "25.90" → "2590".
- * Devolve null se o texto não for um preço reconhecível (aí o campo trata como digitação normal).
+ * "25,9" → { digits: "2590" } (R$ 25,90); "R$ 1.250,00" → "125000"; "25.90" → "2590".
+ * Acima do limite → { tooLarge: true }, para avisar em vez de cortar o número em silêncio.
+ * Texto que não é preço → null (o campo trata como digitação normal).
  */
-export function pastedPriceToDigits(text: string): string | null {
+export function parsePastedPrice(text: string): { digits: string } | { tooLarge: true } | null {
   const clean = text.replace(/R\$|\s/g, '')
   let normalized: string
   if (/^\d{1,3}(\.\d{3})*(,\d{1,2})?$/.test(clean) || /^\d+(,\d{1,2})?$/.test(clean)) {
@@ -52,7 +56,9 @@ export function pastedPriceToDigits(text: string): string | null {
     return null
   }
   const cents = Math.round(Number(normalized) * 100)
-  return Number.isFinite(cents) ? priceDigits(String(cents)) : null
+  if (!Number.isFinite(cents)) return null
+  if (cents > MAX_PRICE_CENTS) return { tooLarge: true }
+  return { digits: priceDigits(String(cents)) }
 }
 
 const price = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
