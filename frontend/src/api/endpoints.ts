@@ -11,9 +11,9 @@ export const authApi = {
 
 export const ordersApi = {
   list: () => api<Order[]>('/orders'),
-  get: (id: number) => api<Order>(`/orders/${id}`),
   create: (body: CreateOrderRequest) =>
     api<Order>('/orders', { method: 'POST', body: JSON.stringify(body) }),
-  updateStatus: (id: number, status: OrderStatus) =>
-    api<Order>(`/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  /** expectedVersion: a versão que a tela mostra. Se o pedido mudou desde então, a API responde 409. */
+  updateStatus: (id: number, status: OrderStatus, expectedVersion: number) =>
+    api<Order>(`/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, expectedVersion }) }),
 }

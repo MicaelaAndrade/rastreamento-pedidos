@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { ordersApi } from '../api/endpoints'
 import type { CreateOrderRequest } from '../api/types'
 import { lookupCep, type CepAddress } from '../lib/cep'
 import { formatMoney } from '../lib/format'
-import { formatPriceDigits, maskPhone, maskZipCode, priceDigits } from '../lib/masks'
+import { formatPriceDigits, maskPhone, maskZipCode, pastedPriceToDigits, priceDigits } from '../lib/masks'
+import { useSingleSubmit } from '../lib/useSingleSubmit'
 
 interface ItemDraft {
   key: number
@@ -15,22 +16,26 @@ interface ItemDraft {
   priceCents: string
 }
 
-type CepStatus = 'idle' | 'loading' | 'found' | 'not-found' | 'error'
+type CepStatus = 'idle' | 'loading' | 'found' | 'partial' | 'not-found' | 'error'
 
 const CEP_MESSAGE: Record<CepStatus, string> = {
   idle: '',
   loading: 'Buscando endereço…',
   found: 'Endereço preenchido pelo CEP. Confira e informe o número.',
+  partial: 'CEP geral da cidade: informe a rua e o bairro.',
   'not-found': 'CEP não encontrado. Preencha o endereço manualmente.',
   error: 'Não foi possível buscar o CEP agora. Preencha o endereço manualmente.',
 }
 
 /**
- * Usa o valor do CEP só se o campo estiver vazio ou ainda com o valor que o próprio CEP preencheu antes.
- * Assim, trocar o CEP atualiza o endereço, mas nunca apaga o que a pessoa digitou.
+ * Decide o valor de um campo do endereço quando um CEP é encontrado:
+ * - campo vazio ou ainda com o valor que o CEP anterior preencheu: usa o do CEP novo,
+ *   mesmo que venha vazio (CEP geral de cidade não tem rua nem bairro, e a rua do CEP
+ *   anterior não pode ficar misturada com a cidade nova);
+ * - campo que a pessoa digitou: nunca é sobrescrito.
  */
 const fill = (current: string, fromCep: string, previousFromCep: string | undefined) =>
-  fromCep && (current === '' || current === previousFromCep) ? fromCep : current
+  current === '' || current === previousFromCep ? fromCep : current
 
 let nextKey = 1
 const emptyItem = (): ItemDraft => ({ key: nextKey++, name: '', quantity: '1', priceCents: '' })
@@ -50,7 +55,11 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()])
   const [cepStatus, setCepStatus] = useState<CepStatus>('idle')
   const zipField = useRef<HTMLInputElement>(null)
+  const streetField = useRef<HTMLInputElement>(null)
   const numberField = useRef<HTMLInputElement>(null)
+  const keepEditingButton = useRef<HTMLButtonElement>(null)
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false)
+  const submit = useSingleSubmit()
   /** CEP da busca em andamento: se a pessoa mudar o CEP no meio, a resposta antiga é ignorada. */
   const pendingCep = useRef('')
   const lastFromCep = useRef<CepAddress | null>(null)
@@ -61,11 +70,29 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
     firstField.current?.focus()
   }, [])
 
+  const isDirty =
+    customer.name !== '' ||
+    customer.phone !== '' ||
+    Object.values(address).some((value) => value !== '') ||
+    items.length > 1 ||
+    items.some((item) => item.name !== '' || item.priceCents !== '' || item.quantity !== '1')
+
+  /** Fechar sem querer (Esc, clique fora) não pode apagar um pedido meio preenchido. */
+  const requestClose = useCallback(() => {
+    if (confirmingDiscard) setConfirmingDiscard(false)
+    else if (isDirty) setConfirmingDiscard(true)
+    else onClose()
+  }, [confirmingDiscard, isDirty, onClose])
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && requestClose()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [requestClose])
+
+  useEffect(() => {
+    if (confirmingDiscard) keepEditingButton.current?.focus()
+  }, [confirmingDiscard])
 
   const create = useMutation({
     mutationFn: (body: CreateOrderRequest) => ordersApi.create(body),
@@ -108,9 +135,12 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
         city: fill(a.city, found.city, previous?.city),
       }))
       lastFromCep.current = found
-      setCepStatus('found')
+      const partial = !found.street || !found.neighborhood
+      setCepStatus(partial ? 'partial' : 'found')
       // Leva a pessoa para o próximo campo que falta, mas só se ela ainda estiver no CEP.
-      if (document.activeElement === zipField.current) numberField.current?.focus()
+      if (document.activeElement === zipField.current) {
+        ;(found.street ? numberField : streetField).current?.focus()
+      }
     } catch {
       if (pendingCep.current === digits) setCepStatus('error')
     }
@@ -122,6 +152,7 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
+    if (!submit.start()) return
     create.mutate({
       customer: { name: customer.name.trim(), phone: customer.phone.trim() },
       deliveryAddress: { ...address, complement: address.complement.trim() || null },
@@ -130,13 +161,13 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
         quantity: Number(item.quantity),
         unitPrice: Number(item.priceCents) / 100,
       })),
-    })
+    }, { onSettled: submit.done })
   }
 
   const error = create.error instanceof ApiError ? create.error : null
 
   return (
-    <div className="panel-backdrop" onClick={onClose}>
+    <div className="panel-backdrop" onClick={requestClose}>
       <section
         className="panel"
         role="dialog"
@@ -146,10 +177,24 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
       >
         <header className="panel-head">
           <h2 id="new-order-title">Novo pedido</h2>
-          <button className="link-button" onClick={onClose}>
+          <button className="link-button" onClick={requestClose}>
             Fechar
           </button>
         </header>
+
+        {confirmingDiscard && (
+          <div className="discard" role="alertdialog" aria-labelledby="discard-title">
+            <p id="discard-title">Descartar este pedido? O que você preencheu será perdido.</p>
+            <div className="order-buttons">
+              <button ref={keepEditingButton} className="btn btn-quiet" onClick={() => setConfirmingDiscard(false)}>
+                Continuar editando
+              </button>
+              <button className="btn btn-danger" onClick={onClose}>
+                Descartar
+              </button>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="panel-form">
           <fieldset>
@@ -202,7 +247,12 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
               </p>
               <label className="field span-3">
                 <span>Rua</span>
-                <input value={address.street} onChange={(e) => setAddress({ ...address, street: e.target.value })} required />
+                <input
+                  ref={streetField}
+                  value={address.street}
+                  onChange={(e) => setAddress({ ...address, street: e.target.value })}
+                  required
+                />
               </label>
               <label className="field">
                 <span>Número</span>
@@ -266,6 +316,14 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
                       inputMode="numeric"
                       value={formatPriceDigits(item.priceCents)}
                       onChange={(e) => updateItem(item.key, { priceCents: priceDigits(e.target.value) })}
+                      onPaste={(e) => {
+                        // Colar "25,90" ou "25.9" deve dar R$ 25,90, e não ler os dígitos como centavos.
+                        const pasted = pastedPriceToDigits(e.clipboardData.getData('text'))
+                        if (pasted !== null) {
+                          e.preventDefault()
+                          updateItem(item.key, { priceCents: pasted })
+                        }
+                      }}
                       placeholder="0,00"
                       required
                     />
@@ -292,8 +350,8 @@ export function NewOrderPanel({ onClose }: { onClose: () => void }) {
               <p>{error.message}</p>
               {error.fieldErrors.length > 0 && (
                 <ul>
-                  {error.fieldErrors.map((f) => (
-                    <li key={f.field}>{f.message}</li>
+                  {error.fieldErrors.map((f, i) => (
+                    <li key={`${f.field}-${i}`}>{f.message}</li>
                   ))}
                 </ul>
               )}

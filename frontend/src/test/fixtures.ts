@@ -22,6 +22,7 @@ export function makeOrder(overrides: Partial<Order> = {}): Order {
       { status: 'EM_PREPARO', changedAt: '2026-10-16T17:10:00Z', changedBy: 'Mica' },
     ],
     allowedNextStatuses: ['SAIU_PARA_ENTREGA', 'CANCELADO'],
+    version: 1,
     ...overrides,
   }
 }

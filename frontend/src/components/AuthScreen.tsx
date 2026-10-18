@@ -4,6 +4,7 @@ import { ApiError } from '../api/client'
 import { authApi } from '../api/endpoints'
 import { useAuth } from '../auth/useAuth'
 import { ROUTE, STATUS_LABEL } from '../lib/status'
+import { useSingleSubmit } from '../lib/useSingleSubmit'
 
 type Mode = 'login' | 'register'
 
@@ -13,6 +14,7 @@ export function AuthScreen() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const submit = useSingleSubmit()
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -28,7 +30,8 @@ export function AuthScreen() {
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    mutation.mutate()
+    if (!submit.start()) return
+    mutation.mutate(undefined, { onSettled: submit.done })
   }
 
   function switchMode(next: Mode) {
@@ -95,8 +98,8 @@ export function AuthScreen() {
               <p>{error.message}</p>
               {error.fieldErrors.length > 0 && (
                 <ul>
-                  {error.fieldErrors.map((f) => (
-                    <li key={f.field}>{f.message}</li>
+                  {error.fieldErrors.map((f, i) => (
+                    <li key={`${f.field}-${i}`}>{f.message}</li>
                   ))}
                 </ul>
               )}

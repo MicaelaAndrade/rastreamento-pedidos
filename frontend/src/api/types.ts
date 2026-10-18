@@ -55,6 +55,8 @@ export interface Order {
   updatedAt: string
   statusHistory: StatusChange[]
   allowedNextStatuses: OrderStatus[]
+  /** Muda a cada alteração; enviada de volta ao mudar o status para detectar tela desatualizada. */
+  version: number
 }
 
 export interface NewOrderItem {

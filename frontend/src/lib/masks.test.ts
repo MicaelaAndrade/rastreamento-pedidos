@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatPriceDigits, maskPhone, maskZipCode, priceDigits } from './masks'
+import { formatPriceDigits, maskPhone, maskZipCode, pastedPriceToDigits, priceDigits } from './masks'
 
 describe('maskPhone', () => {
   it.each([
@@ -51,5 +51,34 @@ describe('preço digitado em centavos', () => {
 
   it('apagar o último dígito volta uma casa (15,00 → 1,50)', () => {
     expect(formatPriceDigits(priceDigits('15,0'))).toBe('1,50')
+  })
+})
+
+describe('correções da revisão', () => {
+  it('apagar o preço até o fim deixa o campo vazio, e não "0,00"', () => {
+    expect(priceDigits('0,0')).toBe('')
+    expect(priceDigits('000')).toBe('')
+    expect(formatPriceDigits(priceDigits('0,0'))).toBe('')
+  })
+
+  it.each([
+    ['25,9', '2590'],
+    ['25,90', '2590'],
+    ['R$ 1.250,00', '125000'],
+    ['1.500', '150000'],
+    ['25.90', '2590'],
+    ['7', '700'],
+  ])('colar "%s" no preço vira %s centavos', (pasted, digits) => {
+    expect(pastedPriceToDigits(pasted)).toBe(digits)
+  })
+
+  it('colar um texto que não é preço é ignorado', () => {
+    expect(pastedPriceToDigits('abc')).toBeNull()
+    expect(pastedPriceToDigits('12,345')).toBeNull()
+  })
+
+  it('telefone colado com +55 descarta o código do país', () => {
+    expect(maskPhone('+55 16 99999-0000')).toBe('(16) 99999-0000')
+    expect(maskPhone('5516999990000')).toBe('(16) 99999-0000')
   })
 })

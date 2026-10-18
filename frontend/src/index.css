@@ -628,6 +628,22 @@ input {
   z-index: 1;
 }
 
+/* Confirmação ao fechar o painel com dados preenchidos. */
+.discard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1.5rem;
+  background: var(--cancel-soft);
+  color: var(--cancel);
+  font-weight: 500;
+  position: sticky;
+  top: 4.1rem;
+  z-index: 1;
+}
+
 .panel-form {
   padding: 1.5rem;
   display: flex;

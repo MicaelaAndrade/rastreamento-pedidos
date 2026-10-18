@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { setUnauthorizedHandler, tokenStorage } from '../api/client'
+import { ApiError, setUnauthorizedHandler, tokenStorage } from '../api/client'
 import { authApi } from '../api/endpoints'
 import type { AuthResponse } from '../api/types'
 import { AuthContext, type AuthState } from './useAuth'
@@ -31,9 +31,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authApi
       .me()
       .then((user) => setState({ status: 'authenticated', user }))
-      .catch(() => signOut())
+      .catch((error) => {
+        // Só um 401 significa sessão inválida. Outros erros (API reiniciando, rede instável)
+        // não devem apagar o login da pessoa.
+        if (error instanceof ApiError && error.status === 401) signOut()
+        else setState({ status: 'unavailable' })
+      })
   }, [state.status, signOut])
 
-  const value = useMemo(() => ({ state, signIn, signOut }), [state, signIn, signOut])
+  const retry = useCallback(() => setState({ status: 'checking' }), [])
+
+  const value = useMemo(() => ({ state, signIn, signOut, retry }), [state, signIn, signOut, retry])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -1,34 +1,41 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { ApiError } from '../api/client'
 import { ordersApi } from '../api/endpoints'
 import type { Order, OrderStatus } from '../api/types'
 import { formatDateTime, formatMoney } from '../lib/format'
 import { ADVANCE_LABEL, STATUS_LABEL } from '../lib/status'
+import { useSingleSubmit } from '../lib/useSingleSubmit'
 import { StatusTrack } from './StatusTrack'
 
 export function OrderRow({ order }: { order: Order }) {
   const queryClient = useQueryClient()
   const [confirmingCancel, setConfirmingCancel] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const submit = useSingleSubmit()
 
   const update = useMutation({
-    mutationFn: (status: OrderStatus) => ordersApi.updateStatus(order.id, status),
-    onSuccess: (updated) => {
-      queryClient.setQueryData(['orders', updated.id], updated)
-      queryClient.invalidateQueries({ queryKey: ['orders'] })
-      setConfirmingCancel(false)
+    // Envia a versão que a tela está mostrando: se outra pessoa mudou o pedido nesse meio-tempo,
+    // a API recusa (409) em vez de aplicar a mudança sobre um estado que a pessoa não viu.
+    mutationFn: (status: OrderStatus) => ordersApi.updateStatus(order.id, status, order.version),
+    onSuccess: () => setConfirmingCancel(false),
+    onError: (error) => {
+      // Pedido mudou ou a transição deixou de valer: recarrega a lista para mostrar o estado atual.
+      if (error instanceof ApiError && error.status === 409) setConfirmingCancel(false)
     },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['orders'] }),
   })
 
-  // Os detalhes vêm do endpoint GET /orders/{id}, carregado só quando a linha é aberta.
-  const details = useQuery({
-    queryKey: ['orders', order.id],
-    queryFn: () => ordersApi.get(order.id),
-    enabled: expanded,
-  })
+  function changeStatus(status: OrderStatus) {
+    if (!submit.start()) return
+    update.mutate(status, { onSettled: submit.done })
+  }
 
   const advanceTo = order.allowedNextStatuses.find((s) => s !== 'CANCELADO')
   const canCancel = order.allowedNextStatuses.includes('CANCELADO')
+  // Se o pedido deixou de poder ser cancelado (outra pessoa o enviou para entrega enquanto esta
+  // confirmação estava aberta), a confirmação some e o botão de avançar volta.
+  const showCancelConfirm = confirmingCancel && canCancel
   const { deliveryAddress: address } = order
   const itemsSummary = order.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')
 
@@ -57,24 +64,24 @@ export function OrderRow({ order }: { order: Order }) {
         </button>
 
         <div className="order-buttons">
-          {canCancel && !confirmingCancel && (
+          {canCancel && !showCancelConfirm && (
             <button className="btn btn-quiet" onClick={() => setConfirmingCancel(true)} disabled={update.isPending}>
               Cancelar pedido
             </button>
           )}
-          {confirmingCancel && (
+          {showCancelConfirm && (
             <span className="confirm" role="group" aria-label="Confirmar cancelamento">
               <span>Cancelar o pedido #{order.id}?</span>
               <button className="btn btn-quiet" onClick={() => setConfirmingCancel(false)}>
                 Manter
               </button>
-              <button className="btn btn-danger" onClick={() => update.mutate('CANCELADO')} disabled={update.isPending}>
+              <button className="btn btn-danger" onClick={() => changeStatus('CANCELADO')} disabled={update.isPending}>
                 Sim, cancelar
               </button>
             </span>
           )}
-          {advanceTo && !confirmingCancel && (
-            <button className="btn btn-primary" onClick={() => update.mutate(advanceTo)} disabled={update.isPending}>
+          {advanceTo && !showCancelConfirm && (
+            <button className="btn btn-primary" onClick={() => changeStatus(advanceTo)} disabled={update.isPending}>
               {ADVANCE_LABEL[advanceTo] ?? STATUS_LABEL[advanceTo]}
             </button>
           )}
@@ -87,11 +94,10 @@ export function OrderRow({ order }: { order: Order }) {
         </p>
       )}
 
+      {/* Os detalhes usam o mesmo pedido da lista: a trilha e o histórico nunca ficam diferentes. */}
       {expanded && (
         <div className="order-details">
-          {details.isPending && <p className="muted">Carregando…</p>}
-          {details.isError && <p className="form-error">{details.error.message}</p>}
-          {details.data && <OrderDetails order={details.data} />}
+          <OrderDetails order={order} />
         </div>
       )}
     </article>
